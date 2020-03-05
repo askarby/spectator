@@ -5,6 +5,7 @@ import $ from 'jquery';
 
 import { hex2rgb, isHex, trim } from './internals/rgb-to-hex';
 import { isHTMLOptionElementArray, isObject } from './types';
+import { isRunningInJsDom } from './utils';
 
 const hasProperty = (actual: unknown, expected: unknown): boolean => {
   return expected === undefined ? actual !== undefined : actual === expected;
@@ -328,7 +329,7 @@ export const toBeEmpty = comparator(el => {
 /**
  * Hidden elements are elements that have:
  * 1. Display property set to "none"
- * 2. Width and height set to 0
+ * 2. Width and height set to 0 (check not applied in jest)
  * 3. A hidden parent element (this also hides child elements)
  * 4. Type equal to "hidden" (only for form elements)
  * 5. A "hidden" attribute
@@ -340,18 +341,26 @@ function isHidden(elOrSelector: HTMLElement | string): boolean {
     return true;
   }
 
+  const hiddenWhen = [
+    el => !(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+    el => el.style.display === 'none',
+    el => el.style.visibility === 'hidden',
+    el => el.type === 'hidden',
+    el => el.hasAttribute('hidden')
+  ];
+
+  if (isRunningInJsDom()) {
+    // When running in JSDOM (Jest), offset-properties and client rects are always reported as 0
+    // - hence, let's take a more "naive" approach here. (https://github.com/jsdom/jsdom/issues/135)
+    hiddenWhen.shift();
+  }
+
   while (el) {
     if (el === document) {
       break;
     }
 
-    if (
-      !(el.offsetWidth || el.offsetHeight || el.getClientRects().length) ||
-      el.style.display === 'none' ||
-      el.style.visibility === 'hidden' ||
-      el.type === 'hidden' ||
-      el.hasAttribute('hidden')
-    ) {
+    if (hiddenWhen.some(rule => rule(el))) {
       return true;
     }
 
